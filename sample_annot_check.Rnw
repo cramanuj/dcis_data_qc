@@ -1,0 +1,204 @@
+\NeedsTeXFormat{LaTeX2e}[1995/12/01]
+%\documentclass[10pt]{bmc_article}
+\documentclass[hidelinks,11pt]{article}
+\linespread{1.5}
+\title{Sample annotation check (DCIS RNAseq data)}
+\author{Acharya C.R.}
+\date{\today}
+
+\usepackage[center]{caption}
+\usepackage{bm}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsbsy}
+\usepackage{amsfonts}
+\usepackage{amscd}
+\usepackage{ifthen}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{hyperref}
+\usepackage{float}
+\restylefloat{figure,table}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{pdflscape}
+\usepackage{colortbl}
+\usepackage{courier}
+\usepackage{verbatim}
+\usepackage{relsize,setspace}
+\usepackage{tabularx,ragged2e,booktabs}
+\usepackage{multicol}
+\usepackage{empheq}
+\usepackage{fancyhdr}
+\pagestyle{fancyplain}
+\fancyhf{}
+\lhead{\fancyplain{}{}}
+\rhead{\fancyplain{}{Acharya C.R.}}
+\rfoot{\fancyplain{}{\thepage}}
+\lfoot[\thepage]{}
+\rfoot[]{\thepage}
+\newcommand{\code}[1]{\texttt{\smaller #1}}
+\newcommand{\R}{{\normalfont\textsf{R}}{}}
+\parskip 1.25ex
+\parindent 0ex
+\textwidth 6.75in
+\textheight 9.25in
+\topmargin -.875in
+\oddsidemargin -.125in
+\evensidemargin -.125in  
+\usepackage{multirow}
+\usepackage{hhline}
+\usepackage{color}
+\usepackage{listings}
+\usepackage[table]{xcolor}
+\usepackage{textcomp}
+\usepackage{breqn}
+\usepackage{arydshln}
+\definecolor{listinggray}{gray}{0.9}
+\definecolor{lbcolor}{rgb}{0.9,0.9,0.9}
+\usepackage{soul}
+\usepackage{booktabs}% http://ctan.org/pkg/booktabs
+\usepackage{txfonts}
+\newcommand{\tabitem}{~~\llap{\textbullet}~~}
+
+\usepackage{Sweave}
+\SweaveOpts{width=8,height=5,highlight=TRUE, tidy=TRUE, keep.space=TRUE, keep.blank.space=FALSE, keep.comment=TRUE}
+%\SweaveOpts{width=8,height=5}
+
+\newcolumntype{x}[1]{%
+>{\centering\hspace{0pt}}p{#1}}%
+                                             
+\setkeys{Gin}{width=0.70 \textwidth} 		
+
+\newcommand{\fig}[1]{\centerline{\includegraphics{#1}}}
+\newcommand{\rpm}{\sbox0{$1$}\sbox2{$\scriptstyle\pm$}
+  \raise\dimexpr(\ht0-\ht2)/2\relax\box2 }
+
+\DeclareGraphicsExtensions{.pdf, .jpg, .png}
+
+\begin{document}
+\maketitle
+
+%\tableofcontents
+%\newpage
+%%\listoffigures
+%\setcounter{tocdepth}{3}
+
+<<echo=F>>=
+options(width=80)
+options(continue=" ")
+@
+
+<<keep.source=F,echo=F>>=
+lib.list = c("data.table","limma","factoextra","FactoMineR","maftools","edgeR","plyr","ggplot2","gridExtra","grid")
+for(i in 1:length(lib.list)){
+if(any(installed.packages()[,1]==lib.list[i])){
+                suppressMessages(library(lib.list[i],character.only=T))}else{
+                source("http://bioconductor.org/biocLite.R");
+                biocLite(lib.list[i]);
+                suppressMessages(library(lib.list[i],character.only=T))};
+}
+@
+
+The following is a documented preprocessing of RNAseq raw count data obtained from Cedars-Sinai group. 
+
+Our first step includes reading the raw count data, `CountTable_withoutDups.csv'. 
+
+<<keep.source=F>>=
+## Read gene expression data
+dat = read.csv("/Users/ca31/Research/DCIS/Duke/RNAseq_dat/CountTable_withoutDups.csv",header=T,na.strings=c("",NA))
+dat$GeneID = gsub("\\..*","",dat$GeneID)
+rownames(dat) = dat[,1]
+dat = dat[,-1]
+dat[1:5,1:15]
+@
+
+In the above table, genes are in rows and samples in column. 
+
+We now read the phenotype data, `SamplesTable.csv'. 
+
+<<>>=
+## Read the phenotype data
+pheno = read.csv("/Users/ca31/Research/DCIS/Duke/RNAseq_dat/SamplesTable.csv",header=T,na.strings=c("","NA"))
+dim(pheno)
+pheno$Replicates = as.character(pheno$Replicates)
+pheno$Tissue_Type = as.character(pheno$Tissue_Type)
+pheno$ClinicalDiagnosis = as.character(pheno$ClinicalDiagnosis)
+head(pheno)
+@
+
+All the tissue types or regions are labeled in column ``Tissue_Type", and the foci within each tissue type or region are labeled ``Replicates".
+
+<<>>=
+table(pheno$Tissue_Type)
+@
+
+The following changes were made to the phenotype annotation data --
+
+\begin{enumerate}
+\item Relabel all ``IDC" to ``IBC".
+\item HER2 status of some samples were changed from ``++" to ``+". 
+\item All the upper case replicate values were transformed to a lower case. 
+\item Spelling error in ``Athypical" epithelium changed to ``Atypical" epithelium.
+\end{enumerate}
+
+<<keep.source=F>>=
+pheno$ClinicalDiagnosis[grep("IDC$",pheno$ClinicalDiagnosis)]<-"IBC"
+pheno$ClinicalDiagnosis[which(pheno$ClinicalDiagnosis=="IDC + DCIS")] <- "IBC + DCIS"
+rownames(pheno) = pheno$Sample_ID
+pheno$ER_status = as.character(pheno$ER_status)
+pheno$PR_status = as.character(pheno$PR_status)
+pheno$HER2_status = as.character(pheno$HER2_status)
+pheno$HER2_status[pheno$HER2_status=="++"]<-"+"
+pheno$Replicates = as.character(pheno$Replicates)
+pheno$Replicates = tolower(pheno$Replicates)
+@
+
+A new sample annotation file labeled ``rectified_1.csv" was used to correct some mislabeled samples in the original annotation file. 
+
+NOTES -- 
+\begin{enumerate}
+\item DCIS (papillary) samples in the original sample annotation were assigned numbers that do not match Joe Geradts' sample annotation (ranges from digits 1 - 9 followed by letters indicating foci). 
+\item The same samples were assigned Joe's annotation code value `9', which refers to category `Other'. However, Joe indicated that these samples should be labeled a `2'. 
+\item Replicate label values were also changed for patients `P49' and `P51' to values in the rectified_1.csv text file. 
+\item Replicate label of patient sample `C07' was changed to `3b'. 
+\item There is only one ``Hyperplasia" sample. Joe suggested to change this classification to ``Benign epithelium".
+\item All samples labeled ``DCIS (papillary)" and ``DCIS (solid)" are consolidated to one type, ``DCIS".
+\item All samples labeled ``Normal epithelium (lobule)" are re-labeled as ``Normal epithelium". 
+\end{enumerate}
+
+Two other columns were created from the ``Replicate" column -- 1) a column with Joe's region code value, and 2) Foci. 
+
+<<keep.source=F>>=
+pheno_rect = read.csv("/Users/ca31/Research/DCIS/Duke/RNAseq_dat/rectified_1.csv",header=T,na.strings=c("","NA"))
+pheno_rect$Claire_annotation = as.character(pheno_rect$Claire_annotation)
+pheno_rect = pheno_rect[!is.na(pheno_rect$Patient_ID2),]
+pheno[grep(" \\(papillary\\)*",pheno$Tissue_Type ),]$Replicates = pheno_rect[grep(" \\(papillary\\)*",pheno_rect$Tissue_Type ),]$Claire_annotation
+pheno[grep(" \\(papillary\\)*",pheno$Tissue_Type ),]$Replicates = gsub("9","2",pheno[grep(" \\(papillary\\)*",pheno$Tissue_Type ),]$Replicates)
+pheno[pheno$Patient_ID2=="P49",]$Replicates = pheno_rect[pheno_rect$Patient_ID2=="P49",]$Claire_annotation
+pheno[pheno$Patient_ID2=="P51",]$Replicates[-c(1:8)] = pheno_rect[pheno_rect$Patient_ID2=="P51",]$Claire_annotation[-c(1:8)]
+pheno[grep("CO7",pheno$Sample_ID),]$Replicates <-"3b"
+pheno$Tissue_Type = gsub("Athypical epithelium","Atypical epithelium",pheno$Tissue_Type)
+pheno$Tissue_Type = gsub("Hyperplasia","Benign epithelium",pheno$Tissue_Type)
+pheno$Tissue_Type = gsub(" \\(papillary\\)*","",pheno$Tissue_Type)
+pheno$Tissue_Type = gsub(" \\(solid\\)*","",pheno$Tissue_Type)
+pheno$Tissue_Type = gsub(" \\(lobule\\)*","",pheno$Tissue_Type)
+pheno$Tissue_Type = as.factor(as.character(pheno$Tissue_Type))
+pheno$Foci = tolower(substring(pheno$Replicates,2,3))
+pheno$Region = substring(pheno$Replicates,1,1)
+@
+
+Confirm Joe's code value assignments to different regions or tissue types.
+
+\begin{figure}[H]
+\begin{center}
+%\resizebox{8.0cm}{!}{%
+<<fig=T,echo=F>>=
+grid.table(table(pheno$Tissue_Type,pheno$Region))
+@
+%}
+\end{center}
+\end{figure}
+
+\end{document}
